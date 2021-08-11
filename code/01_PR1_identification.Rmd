@@ -1,0 +1,119 @@
+---
+title: "Identification of GmPR-1 genes"
+author: "Fabricio Almeida-Silva"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,
+                      warning=FALSE, 
+                      message=FALSE,
+                      tidy.opts=list(width.cutoff=60),
+                      tidy=TRUE)
+```
+
+## Overview
+
+Our goal here is to identify PR-1 genes in soybean. For that, we will use:
+1. BLAST searches of *Arabidopsis thaliana*'s curated protein sequences against *G. max*'s proteome;
+2. Selecting matches < 1e-10;
+3. Searching for conserved protein domain for each family for validation.
+
+## Data loading and preprocessing
+
+- Proteome: **PLAZA Dicots 4.0**
+- Protein domain annotation: **Biomart**
+
+```{r load_proteome_and_annotation, message=FALSE, warning=FALSE}
+data_dir <- here::here("data/")
+proteome <- Biostrings::readAAStringSet(paste0(data_dir, "Gmax_proteome.fa.gz"))
+names(proteome) <- sapply(strsplit(names(proteome), " | "), tail, 1)
+
+# Load gene annotation
+biomart_annotation <- readr::read_tsv(paste0(data_dir, "biomart_allgenes.txt.zip"), 
+                                      trim_ws = TRUE,
+                                      col_names=c("Gene.Name", "PFAM.ID", "PFAM.des",
+                                                  "SMART.ID", "SMART.des",
+                                                  "Panther.ID", "Panther.des",
+                                                  "Pathway.ID", "Pathway.des",
+                                                  "KOG.ID", "KOG.des", 
+                                                  "EC.ID", "EC.des",
+                                                  "KO.ID", "KO.des",
+                                                  "GO.ID", "GO.des",
+                                                  "Synonym", "RefSeq.ID"))
+biomart_annotation <- as.data.frame(biomart_annotation)
+head(biomart_annotation)
+names(biomart_annotation)
+```
+
+Defining functions that we will use throughout this analysis.
+
+
+## GmPR-1 gene identification
+
+**Uniprot search**: name:"pathogenesis-related protein 1" AND reviewed:yes AND organism:"Arabidopsis thaliana (Mouse-ear cress) [3702]"
+*Results*: P33154 (At2g14610), Q9ZNS4 (At2g14580).
+
+**Protein domains** associated with this family: PF00188 (PFAM) and SM000198 (SMART).
+
+**Step 1** of the pipeline.
+
+```{r BLAST_pr1}
+library(rBLAST)
+source(here::here("code", "functions.R"))
+# AA StringSet from Uniprot sequences
+seq_pr1 <- uniprot2stringset(c("P33154", "Q9ZNS4"))
+
+# Get Cajanus cajan PR-1 to use as outgroup (top BLASTp hit)
+outgroup_pr1 <- uniprot2stringset("A0A151S132")
+names(outgroup_pr1) <- "A0A151S132"
+
+# Export one sequence to be used as outgroup for the tree
+Biostrings::writeXStringSet(outgroup_pr1, 
+                            filepath = here::here("products", "result_files",
+                                                  "outgroup_PR1.fa"))
+
+# Blast search
+blast_pr1 <- blast_search(query = seq_pr1, db=proteome, BLAST_args = "-evalue 1e-10")
+head(blast_pr1)
+dim(blast_pr1)
+
+# Get IDs of putative PR-1 genes in soybean
+pr1_putative_s1 <- unique(blast_pr1[,2])
+length(pr1_putative_s1)
+```
+
+**Step 2** of the pipeline:
+
+```{r PD_pr1}
+pr1_putative_s2 <- find_domains(ids=pr1_putative_s1, 
+                                annotation=biomart_annotation,
+                                pfam="PF00188", smart="SM000198")
+nrow(pr1_putative_s2)
+```
+
+Based on the BLAST results, there are `r length(pr1_putative_s1)` PR-1 genes in soybean, of which `r nrow(pr1_putative_s2)` were confirmed based on protein domains.
+
+Finally, we need to export data to the appropriate directory.
+
+```{r export_PR1}
+seqs_pr1 <- proteome[pr1_putative_s2$Gene.Name]
+writeXStringSet(seqs_pr1, 
+                filepath = here::here("products", "result_files", "pr1.fa"))
+```
+
+Removing * from end of sequences.
+
+```{bash}
+sed 's/*//g' ../products/result_files/pr1.fa > ../products/result_files/pr1_nostopcodon.fa
+```
+
+
+## Session information
+
+This report was created under the following conditions:
+
+```{r}
+sessionInfo()
+```

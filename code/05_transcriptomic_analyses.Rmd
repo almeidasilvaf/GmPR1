@@ -1,0 +1,382 @@
+---
+title: "Transcriptomic analyses of GmPR-1 genes"
+author: "Fabrício Almeida-Silva"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,
+                      warning=FALSE, 
+                      message=FALSE,
+                      tidy.opts=list(width.cutoff=60),
+                      tidy=TRUE)
+```
+
+
+## Transcriptomic analysis of GmPR-1 genes
+
+Samples were downloaded from the Soybean Expression Atlas (**Search Gene list** section) and additional stress-related samples were downloaded following the same pipeline described in [Machado et al., 2020]( https://doi.org/10.1111/tpj.14850).
+
+### Global expression profiles
+
+First of all, we all observe the global expression profiles of GmPR-1 genes to identify genes that are broadly expressed (likely to have endogenous functions) and genes that are only activated in response to stress.
+
+```{r id_conversion}
+# Load table of ID conversion
+library(here)
+ids <- read.csv(here("products", "tables", "table1.txt"))[, 1:2]
+```
+
+```{r}
+load(here("data", "expression.RData"))
+globalexp[is.na(globalexp)] <- 0
+globalexp <- log2(globalexp+1)
+
+# Create metadata containing sample name, tissue and stress class (biotic or abiotic)
+metadata1 <- read.csv(here("data", "atlas_metadata_stress_samples.tsv"), 
+                      header = TRUE, sep="\t")[, c(5,7,1)]
+metadata2 <- read.csv(here("data", "newsamples_metadata_stress_samples.tsv"),
+                      header=TRUE, sep="\t")[, c(5,7,1)]
+metadata2 <- metadata2[metadata2$BioSample %in% stress_samples, ]
+
+metadata <- rbind(metadata1, metadata2)
+metadata[is.na(metadata)] <- "none"
+rownames(metadata) <- metadata[,1]
+metadata$BioSample <- NULL
+colnames(metadata) <- c("Tissue", "Stress")
+
+#----Remove tissues with too few samples (<12)----
+tissues <- c("callus", "inflorescences", "seedling", "suspensor", "endosperm")
+removed_samples <- rownames(metadata[metadata$Tissue %in% tissues, ])
+
+globalexp <- globalexp[, !c(colnames(globalexp) %in% removed_samples)]
+metadata <- metadata[!rownames(metadata) %in% removed_samples, ]
+metadata$Tissue <- stringr::str_to_title(metadata$Tissue)
+metadata$Stress <- stringr::str_to_title(metadata$Stress)
+
+#----Customize colors and legend annotation to plot heatmap----
+colors <- c("#1F77B4FF", "#FF7F0EFF", "#2CA02CFF", "#D62728FF",
+               "#9467BDFF", "#8C564BFF", "#E377C2FF", "#7F7F7FFF",
+               "#BCBD22FF", "#17BECFFF", "#AEC7E8FF", "#FFBB78FF",
+               "#98DF8AFF", "#FF9896FF", "#C5B0D5FF", "#C49C94FF",
+               "#F7B6D2FF", "#C7C7C7FF", "#DBDB8DFF", "#9EDAE5FF")
+ann_colors <- list(Tissue = colors[seq_along(unique(metadata$Tissue))],
+                   Stress = c("#7570B3", "#E7298A", "#66A61E"))
+names(ann_colors$Tissue) <- unique(metadata$Tissue)
+names(ann_colors$Stress) <- unique(metadata$Stress)
+
+palette <- colorRampPalette(RColorBrewer::brewer.pal(9, "YlOrRd"))(100)
+
+#----Plot heatmap----
+library(ComplexHeatmap)
+library(ggplotify)
+rownames(globalexp) <- ids$Gene_name[ids$Gene_ID %in% rownames(globalexp)]
+ht_opt(
+  legend_labels_gp = gpar(fontsize=8),
+  legend_title_gp = gpar(fontsize = 8, fontface = "bold"),
+  message=FALSE)
+cheatmap_global <- pheatmap(globalexp, 
+                            annotation_col = metadata,
+                            annotation_colors = ann_colors,
+                            color=palette, 
+                            show_colnames=FALSE,
+                            border_color=NA,
+                            fontsize_row = 7,
+                            main="Global expression profile of GmPR-1 genes")
+cheatmap_global_ggplot <- ggplotify::as.ggplot(cheatmap_global, scale=0.95)
+
+ggplot2::ggsave(file=here("products", "plots", "heatmap_globalexpression.png"),
+                cheatmap_global_ggplot,
+                width=12, height=4)
+
+```
+
+Calculate Tau tissue specificity index:
+
+```{r}
+source(here("code", "functions.R"))
+load(here("products", "result_files", "tree_clusters.rda"))
+gene_order_tree <- gsub("\\|.*", "", gene_order_tree)
+
+# Create data frame containing Tau indices
+tau_pr1 <- data.frame(Gene=rownames(globalexp), 
+                      Tau = as.numeric(apply(globalexp, 1, fTau)), 
+                      stringsAsFactors = FALSE)
+
+# Create data frame of genes and their phylogenetic clusters
+clusters <- data.frame(Gene=gene_order_tree,
+                       Cluster=c(rep("C2", 12), rep("C1", 13)),
+                       stringsAsFactors = FALSE)[-1,] 
+
+# Combine data frames
+tau_plotdata <- merge(tau_pr1, clusters)
+library(ggplot2)
+tau_violin <- ggpubr::ggviolin(tau_plotdata, x="Cluster", y="Tau", 
+                               ylim=c(0,1),
+                               trim=TRUE,
+                               fill="Cluster", palette="npg", legend="none",
+                               add="boxplot", add.params=list(fill="white"),
+                               title="Tau index of tissue specificity",
+                               xlab="Phylogenetic cluster",
+                               font.main=c(13, "bold"), font.x=12, font.y=12, 
+                               font.tickslab=11) + 
+  theme(plot.title=element_text(hjust=0.5))
+tau_violin
+
+#----Export figure----
+ggsave(tau_violin, 
+       file=here("products", "plots", "Tau_violin.pdf"),
+       width=5, height=5)
+```
+
+
+## Analysis of differentially expressed PR-1 genes
+
+Let's run the previously defined functions to find differentially expressed GmPR-1 genes.
+
+```{r dge_prep, message=TRUE}
+load(here("data", "stress_samples_for_DGE_analysis.RData"))
+
+#----Check if all samples are in the expression data frame----
+lapply(biotic_samplelist, function(x) {
+  y <- all(x$BioSample %in% colnames(stressexp))
+  return(y)
+})
+
+lapply(abiotic_samplelist, function(x) {
+  y <- all(x$BioSample %in% colnames(stressexp))
+  return(y)
+})
+
+#----Remove fgraminearum and rsolani because they are not in the expression data frame----
+biotic_contrast_list$fgraminearum <- NULL
+biotic_samplelist$fgraminearum <- NULL
+
+biotic_samplelist$rsolani <- NULL
+biotic_contrast_list$rsolani <- NULL
+
+#----Remove zinc because of genes have the same values for all samples
+abiotic_contrast_list$zinc <- NULL
+abiotic_samplelist$zinc <- NULL
+
+#----Remove mphaseolina because all genes have equal values for all samples----
+biotic_contrast_list$mphaseolina <- NULL
+biotic_samplelist$mphaseolina <- NULL
+
+#----Perform DGE for abiotic stress----
+rownames(stressexp) <- ids$Gene_name[ids$Gene_ID %in% rownames(stressexp)]
+```
+
+```{r dge, eval=FALSE}
+# This chunk was set to eval=FALSE because of long running time.
+# The resulting objects were saved in dge_objects.RData
+deg_abiotic <- parallel_DGE(counts = stressexp,
+                            contrast_list = abiotic_contrast_list,
+                            samplelist = abiotic_samplelist)
+
+deg_biotic <- parallel_DGE(counts = stressexp,
+                           contrast_list = biotic_contrast_list,
+                           samplelist = biotic_samplelist)
+
+#----Process data to plot heatmap----
+abiotic_hm_plotdata <- deg_abiotic
+rownames(abiotic_hm_plotdata) <- abiotic_hm_plotdata$Gene
+abiotic_hm_plotdata$Gene <- NULL
+abiotic_hm_plotdata[abiotic_hm_plotdata < 0.58 &
+                      abiotic_hm_plotdata > -0.58] <- NA
+
+biotic_hm_plotdata <- deg_biotic
+rownames(biotic_hm_plotdata) <- biotic_hm_plotdata$Gene
+biotic_hm_plotdata$Gene <- NULL
+biotic_hm_plotdata[biotic_hm_plotdata < 0.58 &
+                     biotic_hm_plotdata > -0.58] <- NA
+
+#----Create metadata data frame for stress----
+metadata_abiotic <- data.frame(row.names=colnames(abiotic_hm_plotdata),
+                               Stress=gsub("-.*", "", colnames(abiotic_hm_plotdata)))
+metadata_abiotic$Stress <- stringr::str_to_title(metadata_abiotic$Stress)
+metadata_abiotic$Stress <- gsub("Co2", "CO2", metadata_abiotic$Stress)
+
+metadata_biotic <- data.frame(row.names=colnames(biotic_hm_plotdata),
+                               Stress=gsub("-.*", "", colnames(biotic_hm_plotdata)))
+metadata_biotic$Stress <- stringr::str_to_title(metadata_biotic$Stress)
+metadata_biotic$Stress <- gsub("Mamp", "MAMP", metadata_biotic$Stress)
+metadata_biotic$Stress <- gsub("Smv", "SMV", metadata_biotic$Stress)
+metadata_biotic$Stress <- gsub("_gluc_elic", " elicitor", metadata_biotic$Stress)
+
+rownames(abiotic_hm_plotdata) <- ids$Gene_name[ids$Gene_ID %in% 
+                                                 rownames(abiotic_hm_plotdata)]
+rownames(biotic_hm_plotdata) <- ids$Gene_name[ids$Gene_ID %in% 
+                                                 rownames(biotic_hm_plotdata)]
+
+
+save(abiotic_hm_plotdata, biotic_hm_plotdata, 
+     metadata_abiotic, metadata_biotic, 
+     file = here("products", "result_files", "dge_objects.RData"),
+     compress="xz")
+```
+
+Plotting log2 fold change as a heatmap to see which genes are responsive to abiotic and biotic stress.
+
+```{r}
+load(here("products", "result_files", "dge_objects.RData"))
+
+#----Handling colors----
+colors <- c("#1F77B4FF", "#FF7F0EFF", "#2CA02CFF", "#D62728FF",
+               "#9467BDFF", "#8C564BFF", "#E377C2FF", "#7F7F7FFF",
+               "#BCBD22FF", "#17BECFFF", "#AEC7E8FF", "#FFBB78FF",
+               "#98DF8AFF", "#FF9896FF", "#C5B0D5FF", "#C49C94FF",
+               "#F7B6D2FF", "#C7C7C7FF", "#DBDB8DFF", "#9EDAE5FF")
+ann_colors_abiotic <- list(Stress = colors[seq_along(unique(metadata_abiotic$Stress))])
+names(ann_colors_abiotic$Stress) <- unique(metadata_abiotic$Stress)
+
+ann_colors_biotic <- list(Stress = colors[seq_along(unique(metadata_biotic$Stress))])
+names(ann_colors_biotic$Stress) <- unique(metadata_biotic$Stress)
+
+palette <- colorRampPalette(RColorBrewer::brewer.pal(9, "PRGn"))(100)
+
+#----Plot heatmap of fold change in response to abiotic stress----
+library(ComplexHeatmap)
+ht_opt(
+  legend_labels_gp = gpar(fontsize=8),
+  legend_title_gp = gpar(fontsize = 8, fontface = "bold"),
+  message=FALSE)
+cheatmap_abiotic <- pheatmap(abiotic_hm_plotdata, 
+                             annotation_col = metadata_abiotic,
+                             annotation_colors = ann_colors_abiotic,
+                             color=palette, 
+                             cluster_cols=FALSE,
+                             cluster_rows=FALSE,
+                             na_col="grey70",
+                             show_colnames=FALSE,
+                             border_color=NA,
+                             fontsize_row = 8,
+                             main="GmPR-1 response to abiotic stress")
+cheatmap_abiotic_ggplot <- ggplotify::as.ggplot(cheatmap_abiotic, scale=0.95)
+
+#----Plot heatmap of fold change in response to abiotic stress----
+cheatmap_biotic <- ComplexHeatmap::pheatmap(biotic_hm_plotdata, 
+                                            annotation_col = metadata_biotic,
+                                            annotation_colors = ann_colors_biotic,
+                                            color=palette, 
+                                            cluster_cols=FALSE,
+                                            cluster_rows=FALSE,
+                                            na_col="grey70",
+                                            show_colnames=FALSE,
+                                            border_color=NA,
+                                            fontsize_row = 8,
+                                            main="GmPR-1 response to biotic stress"
+                                            )
+cheatmap_biotic_ggplot <- ggplotify::as.ggplot(cheatmap_biotic, scale=0.95)
+```
+
+Combining all heatmaps in one plot:
+
+```{r}
+exp_figure <- ggpubr::ggarrange(cheatmap_global_ggplot,
+                                cheatmap_abiotic_ggplot,
+                                cheatmap_biotic_ggplot, 
+                                nrow=3,
+                                widths = c(1.5, 1, 1),
+                                labels = c("A", "B", "C"))
+library(ggplot2)
+ggsave(
+    filename = here("products", "plots", "Fig3_expression.png"), 
+    exp_figure,
+    width=11, height=11,
+    dpi=300
+)
+```
+
+Exporting information on samples and contrasts as a table.
+
+```{r}
+# Count number of genes that are up-regulated by each stress class
+up_bio <- apply(biotic_hm_plotdata, 1, function(x) any(x > 0))
+up_abio <- apply(abiotic_hm_plotdata, 1, function(x) any(x > 0))
+up_genes <- cbind(up_bio, up_abio)
+up_genes
+
+# Count number of genes that are down-regulated by each stress class
+down_bio <- apply(biotic_hm_plotdata, 1, function(x) any(x > 0))
+down_abio <- apply(abiotic_hm_plotdata, 1, function(x) any(x > 0))
+down_genes <- cbind(down_bio, down_abio)
+down_genes
+sum(down_genes[,1], na.rm = TRUE)
+sum(down_genes[,2], na.rm = TRUE)
+
+# Show top genes that are induced by the biggest number of conditions
+library(tidyverse)
+top_genes <- apply(biotic_hm_plotdata, 1, function(x) which(x > 0))
+top_genes <- top_genes[lapply(top_genes, length) > 0]
+top_genes <- Reduce(rbind, lapply(seq_along(top_genes), function(x) {
+  y <- as.data.frame(top_genes[[x]])
+  z <- cbind(y, Gene = names(top_genes)[x])
+  return(z)
+}))
+top_genes %>%
+  mutate(condition = rownames(top_genes)) %>%
+  mutate(condition = str_replace_all(condition, c("-.*" = ""))) %>%
+  select(Gene, condition) %>%
+  distinct() %>%
+  group_by(Gene) %>%
+  summarise(n = n()) %>%
+  arrange(-n)
+
+top_genes2 <- apply(abiotic_hm_plotdata, 1, function(x) which(x > 0))
+top_genes2 <- top_genes2[lapply(top_genes2, length) > 0]
+top_genes2 <- Reduce(rbind, lapply(seq_along(top_genes2), function(x) {
+  y <- as.data.frame(top_genes2[[x]])
+  z <- cbind(y, Gene = names(top_genes2)[x])
+  return(z)
+}))
+top_genes2 %>%
+  mutate(condition = rownames(top_genes2)) %>%
+  mutate(condition = str_replace_all(condition, c("-.*" = ""))) %>%
+  select(Gene, condition) %>%
+  distinct() %>%
+  group_by(Gene) %>%
+  summarise(n = n()) %>%
+  arrange(-n)
+
+
+#----Create a data frame with contrasts and pathogen information----
+contrast_biotic_export <- lapply(seq_along(biotic_contrast_list), function(x) {
+  y <- cbind(biotic_contrast_list[[x]], Stress=names(biotic_contrast_list)[x])
+})
+contrast_biotic_export <- Reduce(rbind, contrast_biotic_export)
+
+#----Create a data frame with contrasts and abiotic stress information----
+contrast_abiotic_export <- lapply(seq_along(abiotic_contrast_list), function(x) {
+  y <- cbind(abiotic_contrast_list[[x]], Stress=names(abiotic_contrast_list)[x])
+})
+contrast_abiotic_export <- Reduce(rbind, contrast_abiotic_export)
+
+#----Combine tables----
+contrast_export <- rbind(contrast_abiotic_export, contrast_biotic_export)
+colnames(contrast_export) <- c("Control", "Case", "Stress")
+
+#----Create data frame of sample information for biotic and abiotic stress
+sample_biotic_export <- Reduce(rbind, biotic_samplelist)
+sample_abiotic_export <- Reduce(rbind, abiotic_samplelist)
+colnames(sample_biotic_export)[1] <- "Stress_info"
+
+sample_export <- rbind(sample_biotic_export, sample_abiotic_export)
+
+#----Export tables----
+readr::write_tsv(contrast_export, 
+                 file = here("products", "tables", "contrast_table.tsv"))
+
+readr::write_tsv(sample_export, 
+                 file = here("products", "tables", "stress_sample_table.tsv"))
+```
+
+
+## Session information
+
+This document was created under the following conditions:
+
+```{r}
+sessionInfo()
+```

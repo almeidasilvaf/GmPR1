@@ -1,0 +1,23 @@
+go	description	Genes	n
+GO:0005576	extracellular region	Glyma.01G180400, Glyma.02G060800, Glyma.07G186200, Glyma.07G186300, Glyma.07G186400, Glyma.10G047000, Glyma.13G094100, Glyma.13G094200, Glyma.13G251600, Glyma.13G251700, Glyma.13G252000, Glyma.13G252300, Glyma.13G252400, Glyma.13G252500, Glyma.13G252600, Glyma.15G062300, Glyma.15G062400, Glyma.15G062500, Glyma.15G062700, Glyma.15G062800, Glyma.15G062900, Glyma.16G143300, Glyma.17G066000, Glyma.17G066100	24
+GO:0006950	response to stress	Glyma.13G252600, Glyma.15G062300, Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	5
+GO:0006952	defense response	Glyma.13G252600, Glyma.15G062300, Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	5
+GO:0009607	response to biotic stimulus	Glyma.13G252600, Glyma.15G062300, Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	5
+GO:0009617	response to bacterium	Glyma.13G252600, Glyma.15G062300, Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	5
+GO:0001101	response to acid chemical	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0005618	cell wall	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0006955	immune response	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0006970	response to osmotic stress	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0007584	response to nutrient	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009414	response to water deprivation	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009611	response to wounding	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009627	systemic acquired resistance	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009628	response to abiotic stimulus	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009651	response to salt stress	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009719	response to endogenous stimulus	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009723	response to ethylene	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009751	response to salicylic acid	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0009753	response to jasmonic acid	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0010266	response to vitamin B1	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0047484	regulation of response to osmotic stress	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3
+GO:0080027	response to herbivore	Glyma.15G062400, Glyma.15G062500, Glyma.15G062700	3

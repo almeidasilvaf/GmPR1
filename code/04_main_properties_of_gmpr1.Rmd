@@ -1,0 +1,197 @@
+---
+title: "Genomic and structural properties of GmPR-1 genes"
+author: "Fabrício Almeida-Silva"
+date: "3/7/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,
+                      warning=FALSE, 
+                      message=FALSE,
+                      tidy.opts=list(width.cutoff=60),
+                      tidy=TRUE)
+```
+
+## Chromosomal distribution
+
+
+```{r chr_dist}
+library(here)
+library(tidyverse)
+seqs_pr1 <- Biostrings::readAAStringSet(
+    here("products", "result_files", "pr1_nostopcodon.fa")
+)
+
+genes_and_chrom <- data.frame(Gene=sort(names(seqs_pr1)), 
+                              Chr=sort(names(seqs_pr1))) %>%
+  mutate(Chr = str_replace(Chr, "Glyma\\.", "")) %>%
+  mutate(Chr = str_replace(Chr, "G.*", "")) %>%
+  janitor::tabyl(Chr) %>%
+  arrange(-n)
+genes_and_chrom
+```
+
+
+## GO annotation
+
+Here, we will download GO annotation from PLAZA to see which GO terms are attributed to GmPR-1 genes.
+
+```{r go_annot}
+go <- as.data.frame(readr::read_tsv("ftp://ftp.psb.ugent.be/pub/plaza/plaza_public_dicots_04/GO/go.gma.csv.gz", skip=8))
+names(go)[1] <- "Gene_ID"
+go_pr1 <- go[go$Gene_ID %in% names(seqs_pr1), ]
+
+# Create a data frame with GO terms and their associated genes separated by comma
+unique_goterms <- go_pr1 %>%
+  select(Gene_ID, go, description) %>%
+  unique() %>%
+  group_by(go, description) %>%
+  summarise(Genes = str_c(Gene_ID, collapse = ", ")) %>%
+  mutate(n = str_count(Genes, "Glyma")) %>%
+  arrange(-n)
+
+# Manually remove redudant terms (semantic similarity + overlap of associated genes)
+print(unique_goterms, n=Inf, width=10)
+filtered_goterms <- unique_goterms[c(2:4,7:8,14,16,18:21,23:32,37,
+                                     45,48,52,58), ]
+filtered_goterms <- filtered_goterms[-c(18,21,24,26), ]
+
+#----Ecport data as a table----
+write_tsv(filtered_goterms, file=here("products", "tables", "go_table.tsv"))
+```
+
+
+## Structural analysis
+
+### Homology modelling of PR-1 3D structures
+
+Protein 3D structures were modelled with Phyre2 web server, which performs PSI-BLAST searches against the PDB database and performs homology modelling with MODELLER. 
+
+### Secondary structure analysis
+
+The secondary structure analysis was automatically performed in Phyre2 and exported as a detailed report.
+
+```{r secondary_structure}
+second.structure <- data.frame(Genes=c("Glyma.15G062300", "Glyma.17G066100",
+                                       "Glyma.15G062900", "Glyma.01G180400",
+                                       "Glyma.02G060800", "Glyma.07G186200",
+                                       "Glyma.07G186300", "Glyma.07G186400",
+                                       "Glyma.10G047000", "Glyma.13G094100",
+                                       "Glyma.13G094200", "Glyma.13G251600",
+                                       "Glyma.13G251700", "Glyma.13G252000",
+                                       "Glyma.13G252300", "Glyma.13G252400",
+                                       "Glyma.13G252500", "Glyma.13G252600",
+                                       "Glyma.15G062400", "Glyma.15G062500", 
+                                       "Glyma.15G062700", "Glyma.15G062800",
+                                       "Glyma.16G143300", "Glyma.17G066000"),
+                               Alpha_helix=c(40, 43, 35, 26,
+                                             35, 38, 39, 36, 
+                                             22, 32, 39, 38,
+                                             38, 38, 38, 38,
+                                             59, 40, 39, 38,
+                                             39, 40, 36, 37),
+                               Beta_sheet=c(17, 11, 25, 21,
+                                            16, 19, 18, 13,
+                                            13, 16, 15, 17,
+                                            17, 17, 17, 17,
+                                            3, 16, 21, 20,
+                                            18, 17, 16, 17),
+                               Disordered=c(17, 19, 12, 28,
+                                            22, 19, 19, 28,
+                                            48, 32, 25, 21,
+                                            21, 21, 21, 21,
+                                            23, 14, 15, 15,
+                                            17, 20, 21, 22),
+                               TM_helix=c(10, 0, 0, 0,
+                                          0, 10, 0, 9,
+                                          0, 8, 9, 9,
+                                          9, 9, 9, 9,
+                                          0, 10, 10, 10,
+                                          10, 9, 9, 0)) 
+second.structure <- second.structure[order(second.structure$Genes), ]
+```
+
+### Physicochemical properties of PR-1
+
+```{r}
+library(Peptides)
+seqs_pr1 <- seqs_pr1[sort(names(seqs_pr1))]
+pi <- pI(as.character(seqs_pr1))
+mw <- mw(as.character(seqs_pr1)) / 1000
+hydrophibicity <- hydrophobicity(as.character(seqs_pr1))
+```
+
+### Subcellular localization and signal peptide
+
+The presence/absence of signal peptides was analyzed with SignalP 5.0 (http://www.cbs.dtu.dk/services/SignalP/) and the prediction summary was downloaded for analysis in R.
+
+```{r}
+#----Signal peptide analysis----
+signalp <- read.csv(
+    here("products", "result_files", "SignalP5.0", "PR1_signalp5.0.txt"), 
+    header=TRUE, sep="\t", skip=1
+    )
+
+# Create a table containing cleavavge sites of signal peptides
+sptable <- signalp
+sptable$SP <- sapply(strsplit(sptable$CS.Position, ": "), `[`, 2)
+sptable <- sptable[, c(1, 6)]
+sptable$SP <- gsub("\\..*", "", sptable$SP)
+names(sptable) <- c("Gene_ID", "SP")
+sptable <- sptable[order(sptable$Gene_ID), ]
+head(sptable)
+
+#----Subcellular localization analysis----
+# Load Soybase annotation
+load(here("data", "soybase_annotation_tidy.rda"))
+cc <- soybase_annotation
+cc <- cc %>% 
+  filter(Gene %in% names(seqs_pr1)) %>%
+  select(Gene, gocc_des) %>%
+  distinct() %>%
+  arrange(Gene) %>%
+  mutate(gocc_des = str_replace(gocc_des, "extracellular region", "Apoplast"))
+  as.data.frame()
+```
+
+
+### Genomic properties of PR-1
+
+```{r exon_no_length}
+# Stats
+exon_no <- unlist(lapply(gene.str.exonlist, nrow))
+seqlength <- width(seqs_pr1)
+```
+
+Summarizing it all in a table.
+
+```{r table1_paper}
+table1 <- data.frame("Gene_ID" = names(seqs_pr1),
+                     "Gene_name" = paste0("GmPR-1-", 1:length(seqs_pr1)),
+                     "Exon_no" = exon_no,
+                     "Protein length (aa)" = seqlength,
+                     "pI" = signif(pi, 2),
+                     "MW (kDa)" = round(mw),
+                     "Hydrophobicity" = signif(hydrophibicity, 2),
+                     "SL" = "Apoplast",
+                     "SP" = sptable$SP,
+                     stringsAsFactors=FALSE)
+table1 <- merge(table1, second.structure, by.x="Gene_ID", by.y="Genes")
+table1
+
+write.table(
+    table1, 
+    file=here("products", "tables", "table1.txt"), 
+    sep=",", quote=FALSE, row.names=FALSE
+    )
+```
+
+
+## Session information
+
+This document was created under the following conditions:
+
+```{r}
+sessionInfo()
+```

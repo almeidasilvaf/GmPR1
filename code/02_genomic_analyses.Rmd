@@ -1,0 +1,84 @@
+---
+title: "Genomic analyses of GmPR-1 genes in soybean"
+author: "Fabricio Almeida-Silva"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,
+                      warning=FALSE, 
+                      message=FALSE,
+                      tidy.opts=list(width.cutoff=60),
+                      tidy=TRUE)
+```
+
+## Multiple sequence alignment
+
+Visualizing alignment with MAFFT. The sequences were aligned the MAFFT algorithm in the PLAZA's Interactive Phylogenetic Module.
+
+```{r load_id_correspondence}
+library(here)
+
+# Load table of correspondence between Glyma IDs and GmPR-1-X
+ids <- read.csv(here("products", "tables", "table1.txt"), header=TRUE)
+head(ids)
+```
+
+```{r read_mafft}
+library(msa)
+library(tidyverse)
+mafft_complete <- Biostrings::readAAMultipleAlignment(
+  here("products", "result_files", "mafft", "mafft_unedited.fasta")
+)
+id_df <- data.frame(id = rownames(mafft_complete)) %>%
+  mutate(name = ids$Gene_name[ids$Gene_ID %in% id])
+rownames(mafft_complete) <- id_df$name
+
+mafft_msa_complete <- as(mafft_complete, "MsaAAMultipleAlignment")
+msaPrettyPrint(mafft_msa_complete, y=c(229, 385),
+               file=here("products", "plots", "msa_mafft_CAPdomain.pdf"), 
+               output="pdf",
+               paperWidth = 10,
+               showNames="left", showLogo = "none",
+               shadingMode="similar",
+               showLegend=TRUE, askForOverwrite=FALSE,
+               furtherCode="\\showruler{1}{top}",
+               consensusThreshold = 80)
+```
+
+```{bash copy_pdfs_to_plots_dir}
+# Move alignment PDFs to plots directory
+mv msa_mafft_CAPdomain.pdf ../products/plots/msa_mafft_CAPdomain.pdf
+rm ../products/plots/*.tex
+```
+
+```{r eval=FALSE}
+# Export alignment as a FASTA file with C. cajan PR-1 as outgroup
+outgroup <- Biostrings::readAAStringSet(here(
+  "products", "result_files", "outgroup_PR1.fa")
+  )
+names(outgroup) <- "Ccajan"
+tree_alignment <- c(outgroup, seqs_pr1)
+pr1_alignment <- msaMuscle(tree_alignment)
+pr1.expaln <- as(pr1_alignment, "MultipleAlignment")
+Biostrings::write.phylip(
+  pr1.expaln, 
+  filepath=here("products", "result_files",
+                "pr1_alignment_with_outgroup.phylip")
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
